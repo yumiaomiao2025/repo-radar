@@ -1,6 +1,8 @@
 {
   "name": "tool-search",
   "version": "0.1.0",
+  "description": "A Windows desktop app for scanning and managing local Git repositories.",
+  "author": "DXM-1051",
   "private": true,
   "type": "module",
   "main": "dist/electron/main/main.js",
@@ -8,6 +10,9 @@
     "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:5173 dist/electron/main/main.js && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "rimraf dist && tsc -p tsconfig.electron.json && vite build",
     "preview": "cross-env NODE_ENV=production electron .",
+    "start:prod": "pnpm run build && pnpm run preview",
+    "pack": "pnpm run build && electron-builder --dir",
+    "dist:win": "pnpm run build && electron-builder --win nsis",
     "typecheck": "tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -22,9 +27,49 @@
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^35.2.2",
+    "electron-builder": "^24.13.3",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vite": "^5.4.19",
     "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.reporadar.desktop",
+    "productName": "Repo Radar",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "executableName": "Repo Radar",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "selectPerMachineByDefault": true,
+      "artifactName": "${productName}-Installer-${version}.${ext}",
+      "installerIcon": "build/icon.ico",
+      "shortcutName": "Repo Radar",
+      "uninstallDisplayName": "Repo Radar",
+      "uninstallerIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
