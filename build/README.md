@@ -1,5 +1,7 @@
-Place packaging assets in this folder.
+# 打包资源
 
-- `icon.png` and `icon.ico` are generated for this project and used by the Windows build.
-- If you want to replace them later, start from a square source image and export a multi-size `.ico`.
-- Recommended source size is at least 512x512, with 1024x1024 ideal before exporting.
+这个目录用于存放 Windows 打包需要的资源文件。
+
+- `icon.png` 和 `icon.ico` 是当前项目使用的应用图标，会被 Windows 构建流程读取。
+- 如果后续要替换图标，建议从正方形源图开始处理，再导出多尺寸 `.ico`。
+- 源图建议至少 512x512，最好使用 1024x1024，再生成最终图标资源。

@@ -4,3 +4,6 @@ node_modules
 Thumbs.db
 *.log
 release/
+.npm-cache/
+.npm-cache-lucide/
+.npm-cache-lucide-pack/

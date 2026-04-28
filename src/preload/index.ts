@@ -8,8 +8,10 @@ const api: DesktopApi = {
   pickDirectory: () => ipcRenderer.invoke("dialog:pick-directory"),
   addManualRepo: (selectedPath?: string) =>
     ipcRenderer.invoke("repo:add-manual", selectedPath),
-  addScanRoot: (selectedPath?: string) =>
-    ipcRenderer.invoke("repo:add-scan-root", selectedPath),
+  previewScanRoot: (selectedPath: string) =>
+    ipcRenderer.invoke("repo:preview-scan-root", selectedPath),
+  addScanRoot: (selectedPath?: string, selectedRepoPaths?: string[]) =>
+    ipcRenderer.invoke("repo:add-scan-root", selectedPath, selectedRepoPaths),
   removeManualRepo: (repoPath: string) =>
     ipcRenderer.invoke("repo:remove-manual", repoPath),
   removeScanRoot: (rootPath: string) =>
@@ -21,10 +23,22 @@ const api: DesktopApi = {
     ipcRenderer.invoke("repo:create-branch", repoPath, branchName),
   checkoutBranch: (repoPath: string, branchName: string) =>
     ipcRenderer.invoke("repo:checkout-branch", repoPath, branchName),
+  deleteBranch: (repoPath: string, branchName: string) =>
+    ipcRenderer.invoke("repo:delete-branch", repoPath, branchName),
   openInEditor: (repoPath: string, editor: EditorId) =>
     ipcRenderer.invoke("app:open-editor", repoPath, editor),
-  setDefaultEditor: (editor: EditorId) =>
-    ipcRenderer.invoke("settings:set-default-editor", editor)
+  openInTerminal: (
+    repoPath: string,
+    terminal: "windowsTerminal" | "powershell"
+  ) => ipcRenderer.invoke("app:open-terminal", repoPath, terminal),
+  copyRepoPath: (repoPath: string) =>
+    ipcRenderer.invoke("app:copy-repo-path", repoPath),
+  setRepoTags: (repoPath: string, tags: string[]) =>
+    ipcRenderer.invoke("settings:set-repo-tags", repoPath, tags),
+  setBranchAlias: (repoPath: string, branchName: string, alias: string) =>
+    ipcRenderer.invoke("settings:set-branch-alias", repoPath, branchName, alias),
+  setBranchTags: (repoPath: string, branchName: string, tags: string[]) =>
+    ipcRenderer.invoke("settings:set-branch-tags", repoPath, branchName, tags)
 };
 
 contextBridge.exposeInMainWorld("desktopApi", api);

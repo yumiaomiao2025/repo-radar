@@ -270,3 +270,22 @@ export async function checkoutBranch(
 
   await execGit(["-C", repoPath, "switch", cleaned], repoPath);
 }
+
+export async function deleteBranch(
+  repoPath: string,
+  branchName: string
+): Promise<void> {
+  const cleaned = branchName.trim();
+
+  if (!cleaned) {
+    throw new GitServiceError("INVALID_BRANCH_NAME", "请输入分支名称。");
+  }
+
+  const current = await execGit(["-C", repoPath, "branch", "--show-current"], repoPath);
+
+  if (current.stdout.trim() === cleaned) {
+    throw new GitServiceError("CURRENT_BRANCH", "不能删除当前所在分支。");
+  }
+
+  await execGit(["-C", repoPath, "branch", "-d", cleaned], repoPath);
+}

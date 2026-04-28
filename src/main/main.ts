@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -6,6 +6,7 @@ import type {
   DebugInfo,
   EditorId,
   ManagedRepo,
+  ScanPreview,
   SettingsData
 } from "../shared/types.js";
 import { ConfigStore } from "./configStore.js";
@@ -13,10 +14,12 @@ import { getEditorAvailability, openInEditor } from "./editorService.js";
 import {
   checkoutBranch,
   createBranch,
+  deleteBranch as deleteLocalBranch,
   getRepoSnapshot,
   resolveRepoRoot,
   scanForRepos
 } from "./gitService.js";
+import { openInTerminal, type TerminalId } from "./terminalService.js";
 
 delete process.env.SSLKEYLOGFILE;
 delete process.env.NSS_SSLKEYLOGFILE;
@@ -89,6 +92,12 @@ function formatError(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function uniqueTags(tags: string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right)
+  );
+}
+
 async function buildAppState(): Promise<AppState> {
   const settings = await getSettings();
   const editors = await getEditorAvailability();
@@ -101,8 +110,16 @@ async function buildAppState(): Promise<AppState> {
 
   for (const rootPath of settings.scanRootPaths) {
     const repos = await scanForRepos(rootPath);
+    const selectedRepoPaths = settings.scanRootSelections[rootPath];
+    const selectedRepoSet = selectedRepoPaths
+      ? new Set(selectedRepoPaths.map((repoPath) => path.resolve(repoPath).toLowerCase()))
+      : null;
 
     for (const repoPath of repos) {
+      if (selectedRepoSet && !selectedRepoSet.has(path.resolve(repoPath).toLowerCase())) {
+        continue;
+      }
+
       const repo = await getRepoSnapshot(repoPath, "scan", rootPath);
 
       if (!repoMap.has(repo.path.toLowerCase())) {
@@ -158,7 +175,21 @@ async function addManualRepo(selectedPath?: string) {
   }
 }
 
-async function addScanRoot(selectedPath?: string) {
+async function previewScanRoot(selectedPath: string) {
+  const resolved = path.resolve(selectedPath);
+  const repoPaths = await scanForRepos(resolved);
+  const repos = await Promise.all(
+    repoPaths.map((repoPath) => getRepoSnapshot(repoPath, "scan", resolved))
+  );
+  const preview: ScanPreview = {
+    rootPath: resolved,
+    repos
+  };
+
+  return createResult(true, `扫描到 ${repos.length} 个仓库。`, preview);
+}
+
+async function addScanRoot(selectedPath?: string, selectedRepoPaths?: string[]) {
   const rootPath = selectedPath ?? (await pickDirectoryPath());
 
   if (!rootPath) {
@@ -167,14 +198,37 @@ async function addScanRoot(selectedPath?: string) {
 
   const resolved = path.resolve(rootPath);
   const settings = await getSettings();
+  const selectedRepos = (selectedRepoPaths ?? []).map((repoPath) =>
+    path.resolve(repoPath)
+  );
+
+  if (selectedRepoPaths && selectedRepos.length === 0) {
+    return createResult(false, "请至少选择一个要添加的仓库。");
+  }
 
   if (settings.scanRootPaths.includes(resolved)) {
-    return createResult(true, "这个扫描目录已经添加过了。", await buildAppState());
+    await saveSettings({
+      ...settings,
+      scanRootSelections: selectedRepoPaths
+        ? {
+            ...settings.scanRootSelections,
+            [resolved]: selectedRepos
+          }
+        : settings.scanRootSelections
+    });
+
+    return createResult(true, "这个扫描目录已更新。", await buildAppState());
   }
 
   await saveSettings({
     ...settings,
-    scanRootPaths: [...settings.scanRootPaths, resolved]
+    scanRootPaths: [...settings.scanRootPaths, resolved],
+    scanRootSelections: selectedRepoPaths
+      ? {
+          ...settings.scanRootSelections,
+          [resolved]: selectedRepos
+        }
+      : settings.scanRootSelections
   });
 
   return createResult(true, `已添加扫描目录：${resolved}`, await buildAppState());
@@ -192,9 +246,12 @@ async function removeManualRepo(repoPath: string) {
 
 async function removeScanRoot(rootPath: string) {
   const settings = await getSettings();
+  const { [rootPath]: _removed, ...scanRootSelections } = settings.scanRootSelections;
+
   await saveSettings({
     ...settings,
-    scanRootPaths: settings.scanRootPaths.filter((value) => value !== rootPath)
+    scanRootPaths: settings.scanRootPaths.filter((value) => value !== rootPath),
+    scanRootSelections
   });
 
   return createResult(true, `已移除扫描目录：${rootPath}`, await buildAppState());
@@ -236,6 +293,87 @@ async function refreshRepoAfterChange(repoPath: string) {
   const settings = await getSettings();
   const { source, sourcePath } = resolveRepoSource(settings, repoPath);
   return getRepoSnapshot(repoPath, source, sourcePath);
+}
+
+async function setRepoTags(repoPath: string, tags: string[]) {
+  const settings = await getSettings();
+  await saveSettings({
+    ...settings,
+    repoTags: {
+      ...settings.repoTags,
+      [path.resolve(repoPath)]: uniqueTags(tags)
+    }
+  });
+
+  return createResult(true, "仓库标签已更新。", await buildAppState());
+}
+
+async function setBranchAlias(repoPath: string, branchName: string, alias: string) {
+  const settings = await getSettings();
+  const resolved = path.resolve(repoPath);
+  const branchAliases = {
+    ...(settings.branchAliases[resolved] ?? {}),
+    [branchName]: alias.trim()
+  };
+
+  if (!branchAliases[branchName]) {
+    delete branchAliases[branchName];
+  }
+
+  await saveSettings({
+    ...settings,
+    branchAliases: {
+      ...settings.branchAliases,
+      [resolved]: branchAliases
+    }
+  });
+
+  return createResult(true, "分支别名已更新。", await buildAppState());
+}
+
+async function setBranchTags(repoPath: string, branchName: string, tags: string[]) {
+  const settings = await getSettings();
+  const resolved = path.resolve(repoPath);
+  const branchTags = {
+    ...(settings.branchTags[resolved] ?? {}),
+    [branchName]: uniqueTags(tags)
+  };
+
+  if (branchTags[branchName].length === 0) {
+    delete branchTags[branchName];
+  }
+
+  await saveSettings({
+    ...settings,
+    branchTags: {
+      ...settings.branchTags,
+      [resolved]: branchTags
+    }
+  });
+
+  return createResult(true, "分支标签已更新。", await buildAppState());
+}
+
+async function removeBranchMeta(repoPath: string, branchName: string) {
+  const settings = await getSettings();
+  const resolved = path.resolve(repoPath);
+  const branchAliases = { ...(settings.branchAliases[resolved] ?? {}) };
+  const branchTags = { ...(settings.branchTags[resolved] ?? {}) };
+
+  delete branchAliases[branchName];
+  delete branchTags[branchName];
+
+  await saveSettings({
+    ...settings,
+    branchAliases: {
+      ...settings.branchAliases,
+      [resolved]: branchAliases
+    },
+    branchTags: {
+      ...settings.branchTags,
+      [resolved]: branchTags
+    }
+  });
 }
 
 async function createMainWindow() {
@@ -326,8 +464,13 @@ function registerIpcHandlers() {
   ipcMain.handle("repo:add-manual", async (_event, selectedPath?: string) =>
     addManualRepo(selectedPath)
   );
-  ipcMain.handle("repo:add-scan-root", async (_event, selectedPath?: string) =>
-    addScanRoot(selectedPath)
+  ipcMain.handle(
+    "repo:add-scan-root",
+    async (_event, selectedPath?: string, selectedRepoPaths?: string[]) =>
+      addScanRoot(selectedPath, selectedRepoPaths)
+  );
+  ipcMain.handle("repo:preview-scan-root", async (_event, selectedPath: string) =>
+    previewScanRoot(selectedPath)
   );
   ipcMain.handle("repo:remove-manual", async (_event, repoPath: string) =>
     removeManualRepo(repoPath)
@@ -366,6 +509,19 @@ function registerIpcHandlers() {
     }
   );
   ipcMain.handle(
+    "repo:delete-branch",
+    async (_event, repoPath: string, branchName: string) => {
+      try {
+        await deleteLocalBranch(repoPath, branchName);
+        await removeBranchMeta(repoPath, branchName);
+        const repo = await refreshRepoAfterChange(repoPath);
+        return createResult(true, `已删除本地分支：${branchName}`, repo);
+      } catch (error) {
+        return createResult(false, formatError(error, "删除分支失败。"));
+      }
+    }
+  );
+  ipcMain.handle(
     "app:open-editor",
     async (_event, repoPath: string, editor: EditorId) => {
       try {
@@ -376,15 +532,39 @@ function registerIpcHandlers() {
       }
     }
   );
-  ipcMain.handle("settings:set-default-editor", async (_event, editor: EditorId) => {
-    const settings = await getSettings();
-    await saveSettings({
-      ...settings,
-      defaultEditor: editor
-    });
-
-    return createResult(true, `默认编辑器已切换为 ${editor}。`, await buildAppState());
+  ipcMain.handle(
+    "app:open-terminal",
+    async (_event, repoPath: string, terminal: TerminalId) => {
+      try {
+        openInTerminal(repoPath, terminal);
+        return createResult(
+          true,
+          terminal === "windowsTerminal"
+            ? "已用 Windows Terminal 打开仓库。"
+            : "已用 PowerShell 打开仓库。"
+        );
+      } catch (error) {
+        return createResult(false, formatError(error, "打开终端失败。"));
+      }
+    }
+  );
+  ipcMain.handle("app:copy-repo-path", async (_event, repoPath: string) => {
+    clipboard.writeText(repoPath);
+    return createResult(true, "仓库路径已复制。");
   });
+  ipcMain.handle("settings:set-repo-tags", async (_event, repoPath: string, tags: string[]) =>
+    setRepoTags(repoPath, tags)
+  );
+  ipcMain.handle(
+    "settings:set-branch-alias",
+    async (_event, repoPath: string, branchName: string, alias: string) =>
+      setBranchAlias(repoPath, branchName, alias)
+  );
+  ipcMain.handle(
+    "settings:set-branch-tags",
+    async (_event, repoPath: string, branchName: string, tags: string[]) =>
+      setBranchTags(repoPath, branchName, tags)
+  );
 }
 
 app.whenReady().then(async () => {
