@@ -30,6 +30,7 @@ export class GitServiceError extends Error {
   }
 }
 
+// 在指定工作目录下执行 git 命令，返回 stdout/stderr；失败时抛出带错误码的 GitServiceError。
 function execGit(args: string[], cwd: string): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -58,6 +59,7 @@ function execGit(args: string[], cwd: string): Promise<ExecResult> {
   });
 }
 
+// 校验目标路径存在且是目录，否则抛出对应错误。
 async function ensureDirectoryExists(targetPath: string): Promise<void> {
   try {
     const targetStat = await stat(targetPath);
@@ -74,6 +76,7 @@ async function ensureDirectoryExists(targetPath: string): Promise<void> {
   }
 }
 
+// 通过 `git --version` 探测当前环境是否安装了可用的 git 命令。
 async function ensureGitAvailable(cwd: string): Promise<void> {
   try {
     await execGit(["--version"], cwd);
@@ -85,6 +88,7 @@ async function ensureGitAvailable(cwd: string): Promise<void> {
   }
 }
 
+// 校验候选路径位于 Git 工作树内部，非仓库目录会被统一映射为 NOT_A_GIT_REPO 错误。
 async function ensureInsideWorkTree(candidate: string): Promise<void> {
   try {
     const { stdout } = await execGit(
@@ -117,6 +121,7 @@ async function ensureInsideWorkTree(candidate: string): Promise<void> {
   }
 }
 
+// 判断目录下是否存在 .git 入口，用于快速识别仓库根目录而无需调用 git。
 async function pathContainsGit(repoPath: string): Promise<boolean> {
   try {
     await access(path.join(repoPath, ".git"));
@@ -126,10 +131,12 @@ async function pathContainsGit(repoPath: string): Promise<boolean> {
   }
 }
 
+// 为仓库生成稳定的唯一 ID，区分手动添加和扫描发现两种来源。
 function normalizeRepoId(repoPath: string, source: RepoSource): string {
   return `${source}:${repoPath.toLowerCase()}`;
 }
 
+// 把任意路径解析为对应仓库的顶层目录路径，沿途完成存在性、git 可用性、仓库有效性的校验。
 export async function resolveRepoRoot(inputPath: string): Promise<string> {
   const candidate = path.resolve(inputPath);
   await ensureDirectoryExists(candidate);
@@ -142,10 +149,12 @@ export async function resolveRepoRoot(inputPath: string): Promise<string> {
   return path.resolve(stdout.trim());
 }
 
+// 在指定根目录下按有限深度递归扫描，返回所有 Git 仓库的绝对路径，跳过 node_modules 等无关目录。
 export async function scanForRepos(rootPath: string): Promise<string[]> {
   const resolvedRoot = path.resolve(rootPath);
   const foundRepos = new Set<string>();
 
+  // 单层递归：遇到仓库直接收集，未到深度上限则继续遍历子目录。
   async function walk(currentPath: string, depth: number): Promise<void> {
     if (await pathContainsGit(currentPath)) {
       foundRepos.add(currentPath);
@@ -181,6 +190,7 @@ export async function scanForRepos(rootPath: string): Promise<string[]> {
   return [...foundRepos].sort((left, right) => left.localeCompare(right));
 }
 
+// 读取仓库当前的分支列表、当前分支、是否有未提交改动等信息；失败时返回 status="error" 的快照而非抛错。
 export async function getRepoSnapshot(
   repoPath: string,
   source: RepoSource,
@@ -236,6 +246,7 @@ export async function getRepoSnapshot(
   }
 }
 
+// 基于当前 HEAD 创建一个新的本地分支，不切换到该分支。
 export async function createBranch(
   repoPath: string,
   branchName: string
@@ -249,6 +260,7 @@ export async function createBranch(
   await execGit(["-C", repoPath, "branch", cleaned], repoPath);
 }
 
+// 安全地切换分支：当工作区存在未提交改动时直接拒绝，避免覆盖用户修改。
 export async function checkoutBranch(
   repoPath: string,
   branchName: string
@@ -271,6 +283,7 @@ export async function checkoutBranch(
   await execGit(["-C", repoPath, "switch", cleaned], repoPath);
 }
 
+// 安全删除本地分支：当前分支会被拒绝，未合并分支由底层 git -d 自动拒绝。
 export async function deleteBranch(
   repoPath: string,
   branchName: string

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 export type TerminalId = "windowsTerminal" | "powershell";
 
+// 在指定的终端（Windows Terminal 或 PowerShell）中打开仓库所在目录。
 export function openInTerminal(repoPath: string, terminal: TerminalId): void {
   const command = terminal === "windowsTerminal" ? "wt" : "powershell.exe";
   const args =

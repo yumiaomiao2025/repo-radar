@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopApi, EditorId } from "../shared/types.js";
+import type { DesktopApi, EditorId, ThemeId } from "../shared/types.js";
 
+// 通过 contextBridge 暴露给渲染层的 IPC 桥接对象，所有方法都是对 ipcRenderer.invoke 的薄包装。
 const api: DesktopApi = {
   getAppState: () => ipcRenderer.invoke("app:get-state"),
   getDebugInfo: () => ipcRenderer.invoke("app:get-debug-info"),
@@ -38,7 +39,21 @@ const api: DesktopApi = {
   setBranchAlias: (repoPath: string, branchName: string, alias: string) =>
     ipcRenderer.invoke("settings:set-branch-alias", repoPath, branchName, alias),
   setBranchTags: (repoPath: string, branchName: string, tags: string[]) =>
-    ipcRenderer.invoke("settings:set-branch-tags", repoPath, branchName, tags)
+    ipcRenderer.invoke("settings:set-branch-tags", repoPath, branchName, tags),
+  setRepoCardMaxHeight: (maxHeight: number | null) =>
+    ipcRenderer.invoke("settings:set-repo-card-max-height", maxHeight),
+  setBranchNode: (repoPath: string, branchName: string, node: string) =>
+    ipcRenderer.invoke("settings:set-branch-node", repoPath, branchName, node),
+  setBranchNodeOptions: (options: string[]) =>
+    ipcRenderer.invoke("settings:set-branch-node-options", options),
+  setRepoBranchNodeOptions: (repoPath: string, options: string[] | null) =>
+    ipcRenderer.invoke("settings:set-repo-branch-node-options", repoPath, options),
+  openConfigDirectory: () => ipcRenderer.invoke("app:open-config-dir"),
+  exportSettings: () => ipcRenderer.invoke("settings:export"),
+  importSettings: () => ipcRenderer.invoke("settings:import"),
+  setTheme: (theme: ThemeId) => ipcRenderer.invoke("settings:set-theme", theme),
+  checkForUpdates: () => ipcRenderer.invoke("app:check-updates"),
+  openExternalUrl: (url: string) => ipcRenderer.invoke("app:open-external", url)
 };
 
 contextBridge.exposeInMainWorld("desktopApi", api);

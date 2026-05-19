@@ -11,7 +11,14 @@ export interface SettingsData {
   repoTags: Record<string, string[]>;
   branchAliases: Record<string, Record<string, string>>;
   branchTags: Record<string, Record<string, string[]>>;
+  branchNodes: Record<string, Record<string, string>>;
+  branchNodeOptions: string[];
+  repoBranchNodeOptions: Record<string, string[]>;
+  repoCardMaxHeight: number | null;
+  theme: ThemeId;
 }
+
+export type ThemeId = "midnight" | "aurora" | "ember" | "daybreak";
 
 export interface EditorAvailability {
   id: EditorId;
@@ -50,7 +57,16 @@ export interface ScanPreview {
   repos: ManagedRepo[];
 }
 
+// 由“检查更新”返回，包含本地版本、远端最新版本以及对应的下载页地址。
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  hasUpdate: boolean;
+  url: string;
+}
+
 export interface DebugInfo {
+  appVersion: string;
   platform: string;
   electron: string;
   chrome: string;
@@ -109,4 +125,23 @@ export interface DesktopApi {
     branchName: string,
     tags: string[]
   ) => Promise<ActionResult<AppState>>;
+  setRepoCardMaxHeight: (
+    maxHeight: number | null
+  ) => Promise<ActionResult<AppState>>;
+  setBranchNode: (
+    repoPath: string,
+    branchName: string,
+    node: string
+  ) => Promise<ActionResult<AppState>>;
+  setBranchNodeOptions: (options: string[]) => Promise<ActionResult<AppState>>;
+  setRepoBranchNodeOptions: (
+    repoPath: string,
+    options: string[] | null
+  ) => Promise<ActionResult<AppState>>;
+  openConfigDirectory: () => Promise<ActionResult>;
+  exportSettings: () => Promise<ActionResult<string>>;
+  importSettings: () => Promise<ActionResult<AppState>>;
+  setTheme: (theme: ThemeId) => Promise<ActionResult<AppState>>;
+  checkForUpdates: () => Promise<ActionResult<UpdateInfo>>;
+  openExternalUrl: (url: string) => Promise<ActionResult>;
 }

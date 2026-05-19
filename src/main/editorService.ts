@@ -16,6 +16,7 @@ const EDITOR_COMMANDS: Record<EditorId, { label: string; command: string }> = {
   }
 };
 
+// 通过 Windows 自带的 where.exe 判断某个命令是否存在于 PATH 中。
 function commandExists(command: string): Promise<boolean> {
   return new Promise((resolve) => {
     execFile(
@@ -31,6 +32,7 @@ function commandExists(command: string): Promise<boolean> {
   });
 }
 
+// 并发探测所有支持的编辑器是否可用，返回编辑器 ID 到可用性信息的映射。
 export async function getEditorAvailability(): Promise<
   Record<EditorId, EditorAvailability>
 > {
@@ -56,6 +58,7 @@ export async function getEditorAvailability(): Promise<
   >;
 }
 
+// 使用指定的编辑器以分离进程方式打开仓库目录，不阻塞主进程。
 export async function openInEditor(
   editor: EditorId,
   repoPath: string
